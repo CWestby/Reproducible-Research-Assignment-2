@@ -1,0 +1,196 @@
+---
+title: "Analyzing U.S. Storm Data"
+author: "Charles Westby"
+date: "11/13/2017"
+output: html_document
+---
+
+#Synopsis
+In this paper, we are going to look at storm data in the United States between the years 1950 and 2011. We will be trying to find, which types of weather event caused the most damage with regards to population health. We will track this damage by looking at how many injuries and fatalities each type of event caused. Next we will look at how much economic damage was caused by each type of weather event. At the end of the report we hope to know how we should allocate resources with regards to preparation for any coming weather events. 
+
+#Data Processing
+Here I loaded the packages. Then I downloaded the file and created the variable Storm_data to hold the data as a data frame. 
+
+##Loading Libraries and Data
+Here I loaded the packages. Then I downloaded the file and created the variable Storm_data to hold the data as a data frame.
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+
+#Download, Read In and Store Data in a Data Frame
+fileURL   <-  'https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2'
+download.file(fileURL, destfile="StormData.csv.bz2", method = "curl")
+storm_data    <-  read.csv("StormData.csv.bz2")
+```
+##Adding Crop Damage and Storm Damage Variables
+Here I added the columns crop_damage and property_damage. This process was necessary because the columns PROPDMGEXP and CROPDMGEXP need to be combined with PROPDMG and CROPDMG in order to get a readable number. The former variables are exponents that need to be multiplied by the latter variables to get the accurate assessment of the damage.
+```{r echo=TRUE, warning=FALSE}
+get_exponent <- function(exponent) {
+exponent     <-  as.character(exponent)
+exponent[toupper(exponent) == "H"]    <-  "2"
+exponent[toupper(exponent) == "K"]    <-  "3"
+exponent[toupper(exponent) == "M"]    <-  "6"
+exponent[toupper(exponent) == "B"]    <-  "9"
+exponent[is.na(exponent)]             <-  "0"
+exponent     <-  as.numeric(exponent)
+}
+
+storm_data$PROPDMGEXP <- get_exponent(storm_data$PROPDMGEXP)
+storm_data$CROPDMGEXP <- get_exponent(storm_data$CROPDMGEXP)
+
+storm_data <- storm_data %>%
+  mutate(property_damage = PROPDMG * 10^PROPDMGEXP,
+         crop_damage = CROPDMG * 10^CROPDMGEXP)
+```
+##Changing Class of BGN_DATE Variable
+Here I changed the class of the column BGN_DATE to a date class. 
+```{r echo=TRUE}
+#Change BGN_DATE column to a Date Class
+storm_data$BGN_DATE <- as.Date(storm_data$BGN_DATE, "%m/%d/%Y %H:%M:%S")
+```
+
+
+#Results Population Health
+
+##Top 20: Fatalities by Weather Event Types
+Here I found out which types of weather event caused the most fatalities in the whole data set. Then I found out which types of weather event caused the most fatalities in the most recent twenty years in the data set.
+```{r}
+top_fatality <- storm_data %>% 
+  group_by(EVTYPE) %>% #Group by Event Type
+  summarize(total_fatality = sum(FATALITIES)) %>% #Find total fatalities per event type
+  arrange(desc(total_fatality)) %>% #Arrange in descending order
+  head(20)
+top_fatality #Print results
+
+#Perform same as previous chunk just filtering out everything before November 1991
+top_fatality_20y <- storm_data %>%
+  filter(BGN_DATE > "1991-11-01") %>%
+  group_by(EVTYPE) %>%
+  summarize(total_fatality = sum(FATALITIES)) %>%
+  arrange(desc(total_fatality)) %>%
+  head(20)
+top_fatality_20y
+```
+ 
+##Top 20: Injury by Weather Event Types
+Here I found which types of weather event caused the most injuries during the most recent twenty years and within the whole dataset. 
+```{r}
+#Performing same process as earlier just for injuries
+top_injury <- storm_data %>%
+  group_by(EVTYPE) %>%
+  summarize(total_injury = sum(INJURIES)) %>%
+  arrange(desc(total_injury)) %>%
+  head(20)
+top_injury
+
+top_injury_20y <- storm_data %>%
+  filter(BGN_DATE > "1991-11-01") %>%
+  group_by(EVTYPE) %>%
+  summarize(total_injury = sum(INJURIES)) %>%
+  arrange(desc(total_injury)) %>%
+  head(20)
+top_injury_20y
+```
+
+##Graphs: Population Health
+Here I graphed the findings of Top 20: Fatalities by Weather Event Type and Top 20: Injury by Weather Event Types. 
+```{r}
+fatality_graph <- ggplot(top_fatality, aes(x = EVTYPE, y =       total_fatality)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Fatalities", title = "Fatalities")
+
+fatality_graph20 <- ggplot(top_fatality_20y, aes(x = EVTYPE, 
+  y = total_fatality)) + geom_bar(stat="identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Fatalities", title = "Fatalities (1991-2011)")
+
+injury_graph <- ggplot(top_injury, aes(x = EVTYPE, y = total_injury)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Injuries", title = "Injuries")
+
+
+injury_graph20 <- ggplot(top_injury_20y, aes(x = EVTYPE, 
+  y = total_injury)) + geom_bar(stat="identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Injuries", title = "Injuries (1991-2011)")
+
+grid.arrange(fatality_graph, fatality_graph20, ncol=2)
+grid.arrange(injury_graph, injury_graph20, ncol=2)
+```
+
+
+#Results Economic Damage
+
+##Top 20: Crop Damage By Weather Event Type
+Here I found the results of crop damage done for the whole data set and within the most recent 20 years of the data. There isn't much difference between these two datasets. This suggests missing values from early in the dataset or better record keeping more recently
+```{r echo=TRUE}
+top_crop <- storm_data %>%
+  group_by(EVTYPE) %>%
+  summarize(total_crop = sum(crop_damage)) %>%
+  arrange(desc(total_crop)) %>%
+  head(20)
+top_crop
+
+top_crop_20y <- storm_data %>%
+  filter(BGN_DATE > "1991-11-01") %>%
+  group_by(EVTYPE) %>%
+  summarize(total_crop = sum(crop_damage)) %>%
+  arrange(desc(total_crop)) %>%
+  head(20)
+top_crop_20y
+```
+
+##Top 20: Property Damage by Weather Event Type
+Here I found the results of property damaage done in the whole dataset and within the most recent 20 years of the data. Again we don't see much change in the two datasets. 
+```{r echo=TRUE}
+top_prop <- storm_data %>%
+  group_by(EVTYPE) %>%
+  summarize(total_prop = sum(property_damage)) %>%
+  arrange(desc(total_prop)) %>%
+  head(20)
+top_prop
+
+top_prop_20y <- storm_data %>%
+  filter(BGN_DATE > "1991-11-01") %>%
+  group_by(EVTYPE) %>%
+  summarize(total_prop = sum(property_damage)) %>%
+  arrange(desc(total_prop)) %>%
+  head(20)
+top_prop_20y
+```
+
+##Graphs: Economic Damage
+Here I graphed the findings of Top 20: Crop Damage By Weather Event Type and Top 20: Property Damage by Weather Event Type
+```{r}
+crop_graph <- ggplot(top_crop, aes(x = EVTYPE, y = total_crop)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Crop Damage", title = "Crop Damage")
+
+crop_graph20 <- ggplot(top_crop_20y, aes(x = EVTYPE, y = total_crop)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Crop Damage", title = "Crop Damage (1991-2011)")
+
+prop_graph <- ggplot(top_prop, aes(x = EVTYPE, y = total_prop)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Property Damage", title = "Property Damage")
+
+  
+prop_graph20 <- ggplot(top_prop_20y, aes(x = EVTYPE, y = total_prop)) +
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle=90)) +
+  labs(x = "Event Type", y = "Total Property Damage", title = "Property Damage (1991-2011)")
+
+grid.arrange(crop_graph, crop_graph20, ncol=2)
+grid.arrange(prop_graph, prop_graph20, ncol=2)
+```
+ 
+ 
+#Conclusion
+From this analysis, we conclude that the most dangerous weather events are tornadoes, heat, flooding and lightning. These events cause the most fatalities and injuries. We can also conclude that floods, hurricaines, tornadoes, and hail cause the most economic damage to property and crops. From our analysis it appears that floods and tornadoes cause the most overall damage to the economy and to public health.
+
